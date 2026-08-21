@@ -1,0 +1,6 @@
+{
+  "name": "DataChat AI",
+  "description": "A modern AI assistant to analyze, query, and chat with your numerical CSV datasets using a natural language interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
