@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type ColumnType = 'number' | 'string';
+export type ColumnType = 'number' | 'string' | 'date' | 'boolean';
 
 /**
  * The complete, fixed set of analysis operations the client-side interpreter

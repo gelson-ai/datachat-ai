@@ -25,7 +25,13 @@ export interface CsvWorkerRequest {
 
 export type CsvWorkerResponse =
   | { type: 'progress'; progress: number }
-  | { type: 'complete'; headers: string[]; rows: Record<string, unknown>[] }
+  | {
+      type: 'complete';
+      headers: string[];
+      rows: Record<string, unknown>[];
+      renamedHeaders: Record<string, string>;
+      errors: Array<{ type?: string; code?: string; row?: number }>;
+    }
   | { type: 'error'; message: string };
 
 const post = (message: CsvWorkerResponse): void => {
@@ -43,6 +49,8 @@ workerScope.onmessage = (event: MessageEvent<CsvWorkerRequest>) => {
   const rows: Record<string, unknown>[] = [];
   const headers: string[] = [];
   const seenHeaders = new Set<string>();
+  const renamedHeaders: Record<string, string> = {};
+  const errors: Array<{ type?: string; code?: string; row?: number }> = [];
   let lastProgress = 0;
 
   Papa.parse<Record<string, unknown>>(file, {
@@ -58,6 +66,10 @@ workerScope.onmessage = (event: MessageEvent<CsvWorkerRequest>) => {
             seenHeaders.add(key);
             headers.push(key);
           }
+          Object.assign(renamedHeaders, (results.meta as any).renamedHeaders ?? {});
+          for (const error of results.errors ?? []) {
+            errors.push({ type: error.type, code: error.code, row: error.row });
+          }
         }
       }
 
@@ -71,7 +83,7 @@ workerScope.onmessage = (event: MessageEvent<CsvWorkerRequest>) => {
       }
     },
     complete: () => {
-      post({ type: 'complete', headers, rows });
+      post({ type: 'complete', headers, rows, renamedHeaders, errors });
     },
     error: (error) => {
       post({ type: 'error', message: error.message });
