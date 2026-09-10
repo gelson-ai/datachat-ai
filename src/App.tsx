@@ -23,7 +23,8 @@ import {
   Compass,
   FileSpreadsheet,
   AlertCircle,
-  Code
+  Code,
+  Trash2
 } from 'lucide-react';
 import { ColumnType, Row, ChatMessage, DatasetInfo, AnalysisOperation } from './types';
 import { runOperation } from './analysis/runOperation';
@@ -32,6 +33,71 @@ import type { CsvWorkerResponse } from './workers/csvWorker';
 
 /** Maximum accepted upload size. */
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+// --- Session persistence -------------------------------------------------
+// The session lives only in this browser's localStorage; nothing is sent to a
+// server. Every access is guarded because storage can throw (private mode,
+// quota) or hold data written by an older version of the app.
+const DATASET_STORAGE_KEY = 'datachat:dataset';
+const MESSAGES_STORAGE_KEY = 'datachat:messages';
+
+const readStored = (key: string): any => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? null : JSON.parse(raw);
+  } catch {
+    // Unreadable or corrupt entry — treat it as absent rather than crashing
+    return null;
+  }
+};
+
+const writeStored = (key: string, value: unknown): void => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage blocked or full: persistence is best-effort, never fatal
+  }
+};
+
+const removeStored = (key: string): void => {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Nothing useful to do if storage is unavailable
+  }
+};
+
+const clearStoredSession = (): void => {
+  removeStored(DATASET_STORAGE_KEY);
+  removeStored(MESSAGES_STORAGE_KEY);
+};
+
+const loadStoredDataset = (): DatasetInfo | null => {
+  const stored = readStored(DATASET_STORAGE_KEY);
+
+  // Only accept a shape we can actually render
+  if (!stored || !Array.isArray(stored.headers) || !Array.isArray(stored.rows) || !stored.types) {
+    return null;
+  }
+
+  return {
+    ...stored,
+    totalRows: typeof stored.totalRows === 'number' ? stored.totalRows : stored.rows.length
+  };
+};
+
+const loadStoredMessages = (): ChatMessage[] => {
+  const stored = readStored(MESSAGES_STORAGE_KEY);
+  if (!Array.isArray(stored)) return [];
+
+  return stored
+    .filter((msg) => msg && typeof msg.content === 'string' && (msg.role === 'user' || msg.role === 'assistant'))
+    .map((msg) => {
+      // JSON stores dates as strings, so revive the timestamp
+      const timestamp = new Date(msg.timestamp);
+      return { ...msg, timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp };
+    });
+};
 
 // Helper to generate IDs safely
 const generateId = () => {
@@ -197,8 +263,9 @@ const FormattedAnswer: React.FC<{ text: string }> = ({ text }) => {
 };
 
 export default function App() {
-  const [dataset, setDataset] = useState<DatasetInfo | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Restore the previous session on load, then keep it in sync below
+  const [dataset, setDataset] = useState<DatasetInfo | null>(loadStoredDataset);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadStoredMessages);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -237,6 +304,23 @@ export default function App() {
     setParseProgress(null);
   };
 
+  // Persist the dataset and the transcript whenever either changes
+  useEffect(() => {
+    if (dataset) {
+      writeStored(DATASET_STORAGE_KEY, dataset);
+    } else {
+      removeStored(DATASET_STORAGE_KEY);
+    }
+  }, [dataset]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      writeStored(MESSAGES_STORAGE_KEY, messages);
+    } else {
+      removeStored(MESSAGES_STORAGE_KEY);
+    }
+  }, [messages]);
+
   // Reset current dataset and clean screen
   const handleResetDataset = () => {
     stopParsingWorker();
@@ -244,6 +328,19 @@ export default function App() {
     setMessages([]);
     setUploadError(null);
     setErrorWarning(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Wipe the whole saved session: state first, then the stored copy
+  const handleClearSession = () => {
+    setDataset(null);
+    setMessages([]);
+    setUploadError(null);
+    setErrorWarning(null);
+    setExpandedCodes({});
+    clearStoredSession();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -603,6 +700,16 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
             </span>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={handleClearSession}
+          title="Remove the saved dataset and chat from this browser"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white border border-slate-200 hover:text-red-600 hover:border-red-200 hover:bg-red-50/60 px-3 py-1.5 rounded-lg transition-all cursor-pointer shrink-0"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Clear session
+        </button>
 
       </header>
 
