@@ -26,7 +26,8 @@ import {
   AlertCircle,
   Code
 } from 'lucide-react';
-import { ColumnType, Row, ChatMessage, DatasetInfo } from './types';
+import { ColumnType, Row, ChatMessage, DatasetInfo, AnalysisOperation } from './types';
+import { runOperation } from './analysis/runOperation';
 
 // Helper to generate IDs safely
 const generateId = () => {
@@ -356,13 +357,15 @@ export default function App() {
 
     try {
       // Build system prompt detailing dataset schema, inferred column types, and sample rows
-      const systemPrompt = `You are a high-fidelity data analysis code generator.
-The user wants to ask a plain-English question about their uploaded CSV dataset.
+      const systemPrompt = `You are a data analysis planner for an uploaded CSV dataset.
+The user asks a plain-English question, and you reply with a small JSON object describing ONE analysis operation. A client-side interpreter then runs that operation against the dataset — no code, scripts or expressions are ever generated or executed, so you must never return code.
 
-Instead of answering directly, you must write a clean, vanilla JavaScript function BODY that will be executed on the client-side using \`new Function('data', code)\` to compute the answer.
-
-The function takes a single argument, \`data\`, which is an array of row objects.
-Each row object contains the column names as keys, mapped to their values (numbers or strings).
+The complete list of allowed operations:
+- "sum": add up every numeric value in "column".
+- "average": calculate the mean of every numeric value in "column".
+- "count": count the rows. Omit "column" to count the whole dataset, or set it to count the non-empty values of that column.
+- "filter": count the rows where "column" equals "filterValue". Both fields are required.
+- "groupBy": count how many rows share each distinct value of "column".
 
 Schema of columns and their types:
 ${JSON.stringify(dataset.types, null, 2)}
@@ -370,32 +373,18 @@ ${JSON.stringify(dataset.types, null, 2)}
 First 3 sample rows for context:
 ${JSON.stringify(dataset.rows.slice(0, 3), null, 2)}
 
-Your task:
-Write a JavaScript function body (just the body, NO "function(data) {" wrapper, and NO outer markdown code block) that computes the answer to the user's question, and returns a single, clear, conversational plain-English sentence (string) stating the answer with brief supporting details.
+Rules:
+1. Choose the single operation that best answers the user's question. Never combine operations.
+2. Always reference column names exactly as they appear in the schema. Names are case-sensitive!
+3. "sum" and "average" may only target columns typed "number".
+4. For "filter", copy the comparison value from the user's question into "filterValue".
+5. Never invent operations, columns or values, and never attempt to compute the answer yourself — the interpreter does the maths.
 
-Example user question: "who has the highest BMI"
-Expected Javascript function body:
-// Find the row with the maximum BMI
-if (!data || data.length === 0) return "There is no data available to calculate the highest BMI.";
-let maxRow = data[0];
-for (let i = 1; i < data.length; i++) {
-  if (data[i]['BMI'] !== null && (maxRow['BMI'] === null || data[i]['BMI'] > maxRow['BMI'])) {
-    maxRow = data[i];
-  }
-}
-const name = maxRow['Name'] || maxRow['ID'] || 'Record #' + (data.indexOf(maxRow) + 1);
-return name + " has the highest BMI of " + maxRow['BMI'] + ".";
-
-Rules for the JS Code:
-1. You must write robust, error-tolerant JavaScript. Handle empty datasets, null/missing values, and division by zero.
-2. Only use plain standard ES6+ JavaScript. Do not import or call external libraries or APIs.
-3. Keep the return value as a single natural sentence string. Never return a raw object, table, or number.
-4. Always reference the actual keys exactly as they appear in the schema. Keys are case-sensitive!
-5. Never hardcode the answer values or make up calculations. Always compute them dynamically from the \`data\` parameter.
-
-Return a JSON object in this exact shape:
+Return a JSON object in this exact shape, with no extra keys and no markdown fences:
 {
-  "code": "<javascript function body as a single properly-escaped string>"
+  "operation": "sum" | "average" | "count" | "filter" | "groupBy",
+  "column": "<exact column name, omit only for a whole-dataset count>",
+  "filterValue": "<value to match, only for the filter operation>"
 }`;
 
       const response = await fetch('/api/chat', {
@@ -418,25 +407,25 @@ Return a JSON object in this exact shape:
       const rawText = resBody.choices?.[0]?.message?.content || '{}';
       const parsedJSON = parseOpenAIResponse(rawText);
 
-      if (!parsedJSON.code) {
-        throw new Error("Assistant response JSON did not include a 'code' parameter.");
+      if (!parsedJSON.operation) {
+        throw new Error("Assistant response JSON did not include an 'operation' parameter.");
       }
 
-      // Execute generated code in client-side sandbox
+      const operation = parsedJSON as AnalysisOperation;
+
+      // Interpret the requested operation safely — no dynamic code execution
       let outputText = '';
       try {
-        const targetFn = new Function('data', parsedJSON.code);
-        const codeOutput = targetFn(dataset.rows);
-        outputText = codeOutput === undefined || codeOutput === null ? 'No result returned from dataset calculation.' : String(codeOutput);
-      } catch (evalErr: any) {
-        throw new Error(`Execution Error: ${evalErr.message}\n\nThe computed JS script encountered a runtime issue on your dataset.`);
+        outputText = runOperation(operation, dataset);
+      } catch (opErr: any) {
+        throw new Error(`Execution Error: ${opErr.message}\n\nThe requested operation could not be applied to your dataset.`);
       }
 
       const botReply: ChatMessage = {
         id: generateId(),
         role: 'assistant',
         content: outputText,
-        code: parsedJSON.code,
+        code: JSON.stringify(operation, null, 2),
         timestamp: new Date()
       };
       
@@ -697,7 +686,7 @@ Return a JSON object in this exact shape:
                           <div className="flex-1">
                             <FormattedAnswer text={msg.content} />
                             
-                            {/* CODE INSPECTOR PANEL (only if code compiles and exists) */}
+                            {/* OPERATION INSPECTOR PANEL (only if an operation was requested) */}
                             {msg.code && (
                               <div className="mt-4 border-t border-slate-100 pt-3">
                                 <button
@@ -705,7 +694,7 @@ Return a JSON object in this exact shape:
                                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                                 >
                                   <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${expandedCodes[msg.id] ? 'rotate-90' : ''}`} />
-                                  {expandedCodes[msg.id] ? 'Hide generated analysis code' : 'View generated analysis code'}
+                                  {expandedCodes[msg.id] ? 'Hide analysis operation' : 'View analysis operation'}
                                 </button>
                                 
                                 {expandedCodes[msg.id] && (
