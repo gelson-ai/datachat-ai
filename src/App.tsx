@@ -5,7 +5,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import Papa from 'papaparse';
 import { 
   Upload, 
   Database, 
@@ -24,10 +23,81 @@ import {
   Compass,
   FileSpreadsheet,
   AlertCircle,
-  Code
+  Code,
+  Trash2
 } from 'lucide-react';
 import { ColumnType, Row, ChatMessage, DatasetInfo, AnalysisOperation } from './types';
 import { runOperation } from './analysis/runOperation';
+import DataSummary from './components/DataSummary';
+import type { CsvWorkerResponse } from './workers/csvWorker';
+
+/** Maximum accepted upload size. */
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+// --- Session persistence -------------------------------------------------
+// The session lives only in this browser's localStorage; nothing is sent to a
+// server. Every access is guarded because storage can throw (private mode,
+// quota) or hold data written by an older version of the app.
+const DATASET_STORAGE_KEY = 'datachat:dataset';
+const MESSAGES_STORAGE_KEY = 'datachat:messages';
+
+const readStored = (key: string): any => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? null : JSON.parse(raw);
+  } catch {
+    // Unreadable or corrupt entry — treat it as absent rather than crashing
+    return null;
+  }
+};
+
+const writeStored = (key: string, value: unknown): void => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage blocked or full: persistence is best-effort, never fatal
+  }
+};
+
+const removeStored = (key: string): void => {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Nothing useful to do if storage is unavailable
+  }
+};
+
+const clearStoredSession = (): void => {
+  removeStored(DATASET_STORAGE_KEY);
+  removeStored(MESSAGES_STORAGE_KEY);
+};
+
+const loadStoredDataset = (): DatasetInfo | null => {
+  const stored = readStored(DATASET_STORAGE_KEY);
+
+  // Only accept a shape we can actually render
+  if (!stored || !Array.isArray(stored.headers) || !Array.isArray(stored.rows) || !stored.types) {
+    return null;
+  }
+
+  return {
+    ...stored,
+    totalRows: typeof stored.totalRows === 'number' ? stored.totalRows : stored.rows.length
+  };
+};
+
+const loadStoredMessages = (): ChatMessage[] => {
+  const stored = readStored(MESSAGES_STORAGE_KEY);
+  if (!Array.isArray(stored)) return [];
+
+  return stored
+    .filter((msg) => msg && typeof msg.content === 'string' && (msg.role === 'user' || msg.role === 'assistant'))
+    .map((msg) => {
+      // JSON stores dates as strings, so revive the timestamp
+      const timestamp = new Date(msg.timestamp);
+      return { ...msg, timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp };
+    });
+};
 
 // Helper to generate IDs safely
 const generateId = () => {
@@ -37,13 +107,43 @@ const generateId = () => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
+// Display labels for each inferred column type
+const COLUMN_TYPE_LABELS: Record<ColumnType, { short: string; badge: string }> = {
+  number: { short: 'num', badge: 'NUMERIC' },
+  string: { short: 'text', badge: 'TEXT' },
+  date: { short: 'date', badge: 'DATE' },
+  boolean: { short: 'bool', badge: 'BOOLEAN' }
+};
+
+// Boolean literals we accept when inferring/coercing boolean columns
+const parseBoolean = (value: string): boolean | null => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === 'yes') return true;
+  if (normalized === 'false' || normalized === 'no') return false;
+  return null;
+};
+
+// Deliberately stricter than Date.parse so plain strings and numbers are not
+// mistaken for dates.
+const DATE_PATTERNS = [
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/,
+  /^\d{4}\/\d{1,2}\/\d{1,2}([ T]\d{1,2}:\d{2}(:\d{2})?)?$/,
+  /^\d{1,2}\/\d{1,2}\/\d{4}$/
+];
+
+const isDateLike = (value: string): boolean =>
+  DATE_PATTERNS.some((pattern) => pattern.test(value)) && !isNaN(Date.parse(value));
+
+// Numbers may arrive with currency symbols and thousands separators
+const isNumericLike = (value: string): boolean =>
+  /\d/.test(value) && !isNaN(Number(value.replace(/[^0-9.-]/g, '')));
+
 // Type inferring helper checking first 100 rows
 const inferColumnTypes = (headers: string[], data: any[]): Record<string, ColumnType> => {
   const types: Record<string, ColumnType> = {};
   
   headers.forEach((col) => {
-    let hasNumeric = false;
-    let hasText = false;
+    const kinds = new Set<ColumnType>();
 
     // Check up to 100 rows
     const limit = Math.min(data.length, 100);
@@ -52,42 +152,56 @@ const inferColumnTypes = (headers: string[], data: any[]): Record<string, Column
       if (val === undefined || val === null || val === '') {
         continue;
       }
-      
+
       if (typeof val === 'number') {
-        hasNumeric = true;
-      } else if (typeof val === 'string') {
-        const cleanVal = val.trim();
-        // Skip empty strings
-        if (cleanVal === '') continue;
-        
-        // Check if parsing as number succeeds
-        // We strip currency and commas first
-        const numCandidate = Number(cleanVal.replace(/[^0-9.-]/g, ''));
-        if (!isNaN(numCandidate) && cleanVal.match(/\d/)) {
-          hasNumeric = true;
-        } else {
-          hasText = true;
-        }
+        kinds.add('number');
+        continue;
+      }
+      if (typeof val === 'boolean') {
+        kinds.add('boolean');
+        continue;
+      }
+      if (typeof val !== 'string') {
+        kinds.add('string');
+        continue;
+      }
+
+      const cleanVal = val.trim();
+      // Skip empty strings
+      if (cleanVal === '') continue;
+
+      // Dates are checked before numbers: a value like "2024-01-05" would
+      // otherwise strip to the digits 20240105 and look numeric.
+      if (parseBoolean(cleanVal) !== null) {
+        kinds.add('boolean');
+      } else if (isDateLike(cleanVal)) {
+        kinds.add('date');
+      } else if (isNumericLike(cleanVal)) {
+        kinds.add('number');
       } else {
-        hasText = true;
+        kinds.add('string');
       }
     }
 
-    // Default to 'string' if no data, or if text exists
-    types[col] = (hasNumeric && !hasText) ? 'number' : 'string';
+    // A column is only given a type when every sampled value agrees on it.
+    // Inconsistent columns (and empty ones) fall back to 'string'.
+    types[col] = kinds.size === 1 ? Array.from(kinds)[0] : 'string';
   });
   
   return types;
 };
 
-// Cleans data and coerces number columns appropriately
+// Cleans data and coerces columns to their inferred type
 const cleanAndCoerceData = (headers: string[], rawRows: any[], types: Record<string, ColumnType>): Row[] => {
   return rawRows.map((row) => {
     const newRow: Row = {};
     headers.forEach((col) => {
       const val = row[col];
-      if (types[col] === 'number') {
-        if (val === undefined || val === null || String(val).trim() === '') {
+      const type = types[col];
+      const isEmpty = val === undefined || val === null || String(val).trim() === '';
+
+      if (type === 'number') {
+        if (isEmpty) {
           newRow[col] = null;
         } else if (typeof val === 'number') {
           newRow[col] = val;
@@ -97,6 +211,17 @@ const cleanAndCoerceData = (headers: string[], rawRows: any[], types: Record<str
           const num = Number(cleanVal);
           newRow[col] = isNaN(num) ? null : num;
         }
+      } else if (type === 'boolean') {
+        if (isEmpty) {
+          newRow[col] = null;
+        } else if (typeof val === 'boolean') {
+          newRow[col] = val;
+        } else {
+          newRow[col] = parseBoolean(String(val));
+        }
+      } else if (type === 'date') {
+        // Dates are kept verbatim so nothing is silently rewritten
+        newRow[col] = isEmpty ? '' : String(val).trim();
       } else {
         newRow[col] = val === undefined || val === null ? '' : String(val);
       }
@@ -138,8 +263,9 @@ const FormattedAnswer: React.FC<{ text: string }> = ({ text }) => {
 };
 
 export default function App() {
-  const [dataset, setDataset] = useState<DatasetInfo | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Restore the previous session on load, then keep it in sync below
+  const [dataset, setDataset] = useState<DatasetInfo | null>(loadStoredDataset);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadStoredMessages);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [input, setInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -147,6 +273,10 @@ export default function App() {
   // Errors and feedback
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [errorWarning, setErrorWarning] = useState<string | null>(null);
+  
+  // CSV parsing progress (null while idle) and the active parsing worker
+  const [parseProgress, setParseProgress] = useState<number | null>(null);
+  const parseWorkerRef = useRef<Worker | null>(null);
   
   // Expanded Javascript code inspection states
   const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({});
@@ -159,12 +289,58 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Stop any in-flight parsing worker when the app unmounts
+  useEffect(() => {
+    return () => {
+      parseWorkerRef.current?.terminate();
+      parseWorkerRef.current = null;
+    };
+  }, []);
+
+  // Tear down the current parsing worker and hide the progress indicator
+  const stopParsingWorker = () => {
+    parseWorkerRef.current?.terminate();
+    parseWorkerRef.current = null;
+    setParseProgress(null);
+  };
+
+  // Persist the dataset and the transcript whenever either changes
+  useEffect(() => {
+    if (dataset) {
+      writeStored(DATASET_STORAGE_KEY, dataset);
+    } else {
+      removeStored(DATASET_STORAGE_KEY);
+    }
+  }, [dataset]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      writeStored(MESSAGES_STORAGE_KEY, messages);
+    } else {
+      removeStored(MESSAGES_STORAGE_KEY);
+    }
+  }, [messages]);
+
   // Reset current dataset and clean screen
   const handleResetDataset = () => {
+    stopParsingWorker();
     setDataset(null);
     setMessages([]);
     setUploadError(null);
     setErrorWarning(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Wipe the whole saved session: state first, then the stored copy
+  const handleClearSession = () => {
+    setDataset(null);
+    setMessages([]);
+    setUploadError(null);
+    setErrorWarning(null);
+    setExpandedCodes({});
+    clearStoredSession();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -198,72 +374,134 @@ export default function App() {
 
   const processFile = (file: File) => {
     setUploadError(null);
+
     if (!file.name.toLowerCase().endsWith('.csv')) {
       setUploadError('Unsupported file type. Please upload a valid CSV file.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      
-      Papa.parse(text, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: 'greedy',
-        complete: (results) => {
-          const rawRows = results.data as any[];
-          if (!rawRows || rawRows.length === 0) {
-            setUploadError('The selected CSV file appears to be empty.');
-            return;
-          }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setUploadError(
+        `That file is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The maximum supported size is 10MB — please upload a smaller CSV.`
+      );
+      return;
+    }
 
-          // Gather complete set of headers
-          const headersSet = new Set<string>();
-          rawRows.forEach(row => {
-            Object.keys(row).forEach(key => headersSet.add(key));
-          });
-          const headers = Array.from(headersSet);
+    // Drop any previously running parse before starting a new one
+    stopParsingWorker();
+    setParseProgress(0);
 
-          if (headers.length === 0) {
-            setUploadError('No valid headers or columns found in the CSV.');
-            return;
-          }
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL('./workers/csvWorker.ts', import.meta.url), { type: 'module' });
+    } catch (workerErr: any) {
+      setParseProgress(null);
+      setUploadError('Failed parsing CSV file: the background parser could not be started.');
+      return;
+    }
+    parseWorkerRef.current = worker;
 
-          // Infer types of each column
-          const types = inferColumnTypes(headers, rawRows);
+    // Tear the worker down and hide the progress indicator
+    const finishParsing = () => {
+      worker.terminate();
+      if (parseWorkerRef.current === worker) {
+        parseWorkerRef.current = null;
+      }
+      setParseProgress(null);
+    };
 
-          // Guard: Verify there is at least one numeric column
-          const numericCols = Object.keys(types).filter(col => types[col] === 'number');
-          if (numericCols.length === 0) {
-            setUploadError('This file has no numerical data — please upload a CSV with number columns');
-            return;
-          }
+    const acceptParsedRows = (
+      rawRows: any[],
+      headers: string[],
+      renamedHeaders?: Record<string, string>,
+      parseErrors: Array<{ type?: string; code?: string; row?: number }> = []
+    ) => {
+      if (!rawRows || rawRows.length === 0) {
+        setUploadError('The selected CSV file appears to be empty.');
+        return;
+      }
 
-          // Clean, coerce, and structure dataset
-          const cleanedRows = cleanAndCoerceData(headers, rawRows, types);
+      if (renamedHeaders && Object.keys(renamedHeaders).length > 0) {
+        const duplicates = Array.from(new Set(Object.values(renamedHeaders)));
+        setUploadError(
+          `Duplicate column headers found: ${duplicates.map((name) => `"${name}"`).join(', ')}. ` +
+          'Every column needs a unique name — please rename the duplicates and upload again.'
+        );
+        return;
+      }
 
-          setDataset({
-            filename: file.name,
-            headers,
-            types,
-            rows: cleanedRows,
-            totalRows: cleanedRows.length
-          });
-          
-          // Clear any active chat logs when uploading a new CSV
-          setMessages([]);
-        },
-        error: (err) => {
-          setUploadError(`Failed parsing CSV file: ${err.message}`);
-        }
+      const fieldMismatches = parseErrors.filter(
+        (error) => error.type === 'FieldMismatch' || error.code === 'TooFewFields' || error.code === 'TooManyFields'
+      );
+      if (fieldMismatches.length > 0) {
+        const rowNumbers = fieldMismatches
+          .slice(0, 5)
+          .map((error) => (typeof error.row === 'number' ? error.row + 1 : '?'));
+        const extra = fieldMismatches.length > rowNumbers.length
+          ? ` and ${fieldMismatches.length - rowNumbers.length} more`
+          : '';
+        setUploadError(
+          `Malformed CSV: ${fieldMismatches.length} row${fieldMismatches.length === 1 ? '' : 's'} ` +
+          `(${rowNumbers.join(', ')}${extra}) do${fieldMismatches.length === 1 ? 'es' : ''} not match the header. ` +
+          `Every row must have exactly the same number of columns — please fix the file and upload again.`
+        );
+        return;
+      }
+
+      if (headers.length === 0) {
+        setUploadError('No valid headers or columns found in the CSV.');
+        return;
+      }
+
+      // Infer types of each column
+      const types = inferColumnTypes(headers, rawRows);
+
+      // Guard: Verify there is at least one numeric column
+      const numericCols = Object.keys(types).filter(col => types[col] === 'number');
+      if (numericCols.length === 0) {
+        setUploadError('This file has no numerical data — please upload a CSV with number columns');
+        return;
+      }
+
+      // Clean, coerce, and structure dataset
+      const cleanedRows = cleanAndCoerceData(headers, rawRows, types);
+
+      setDataset({
+        filename: file.name,
+        headers,
+        types,
+        rows: cleanedRows,
+        totalRows: cleanedRows.length
       });
+
+      // Clear any active chat logs when uploading a new CSV
+      setMessages([]);
     };
-    
-    reader.onerror = () => {
-      setUploadError('Error reading CSV file.');
+
+    worker.onmessage = (event: MessageEvent<CsvWorkerResponse>) => {
+      const message = event.data;
+
+      if (message.type === 'progress') {
+        setParseProgress(message.progress);
+        return;
+      }
+
+      finishParsing();
+
+      if (message.type === 'error') {
+        setUploadError(`Failed parsing CSV file: ${message.message}`);
+        return;
+      }
+
+      acceptParsedRows(message.rows, message.headers, message.renamedHeaders, message.errors);
     };
-    reader.readAsText(file);
+
+    worker.onerror = () => {
+      finishParsing();
+      setUploadError('Failed parsing CSV file: the background parser stopped unexpectedly.');
+    };
+
+    worker.postMessage({ file });
   };
 
   // Dynamic suggested questions generator
@@ -463,6 +701,16 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
           </div>
         </div>
 
+        <button
+          type="button"
+          onClick={handleClearSession}
+          title="Remove the saved dataset and chat from this browser"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white border border-slate-200 hover:text-red-600 hover:border-red-200 hover:bg-red-50/60 px-3 py-1.5 rounded-lg transition-all cursor-pointer shrink-0"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Clear session
+        </button>
+
       </header>
 
       {/* MAIN CONTAINER */}
@@ -501,6 +749,31 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                 <p className="font-semibold text-slate-800 text-base">Drop your CSV here or click to browse</p>
                 <p className="text-sm text-slate-500 mt-1">Numerical data, any number of columns</p>
               </div>
+
+              {/* PARSING PROGRESS */}
+              {parseProgress !== null && (
+                <div className="w-full max-w-xs mt-1 animate-fadeIn">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <RefreshCw className="h-3 w-3 animate-spin text-indigo-500" />
+                      Parsing CSV in background...
+                    </span>
+                    <span className="font-mono text-indigo-600">{parseProgress}%</span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-valuenow={parseProgress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden"
+                  >
+                    <div
+                      className="h-full bg-indigo-500 rounded-full transition-all duration-200"
+                      style={{ width: `${parseProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               
               {uploadError && (
                 <div className="mt-2 flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-xs py-2 px-3.5 rounded-lg text-left max-w-sm">
@@ -538,12 +811,15 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Data Preview</h2>
                 <div className="flex gap-2">
-                  <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
-                    {Object.values(dataset.types).filter(t => t === 'number').length} NUMERIC
-                  </span>
-                  <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
-                    {Object.values(dataset.types).filter(t => t === 'string').length} TEXT
-                  </span>
+                  {(['number', 'date', 'boolean', 'string'] as ColumnType[]).map((type) => {
+                    const count = Object.values(dataset.types).filter(t => t === type).length;
+                    if (count === 0) return null;
+                    return (
+                      <span key={type} className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
+                        {count} {COLUMN_TYPE_LABELS[type].badge}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -557,7 +833,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                           <div className="flex flex-col gap-0.5">
                             <span className="uppercase">{col}</span>
                             <span className="font-normal opacity-60 text-[9px] font-mono lowercase bg-slate-100 px-1 py-0.2 rounded-sm w-fit">
-                              {dataset.types[col] === 'number' ? 'num' : 'text'}
+                              {COLUMN_TYPE_LABELS[dataset.types[col]]?.short ?? 'text'}
                             </span>
                           </div>
                         </th>
@@ -595,6 +871,9 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               </p>
             </div>
           )}
+
+          {/* DATA SUMMARY PANEL */}
+          {dataset && <DataSummary dataset={dataset} />}
 
           {/* SUGGESTED CHIPS */}
           {dataset && (
