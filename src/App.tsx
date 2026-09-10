@@ -5,7 +5,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import Papa from 'papaparse';
 import { 
   Upload, 
   Database, 
@@ -27,6 +26,10 @@ import {
   Code
 } from 'lucide-react';
 import { ColumnType, Row, ChatMessage, DatasetInfo } from './types';
+import type { CsvWorkerResponse } from './workers/csvWorker';
+
+/** Maximum accepted upload size. */
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 // Helper to generate IDs safely
 const generateId = () => {
@@ -147,6 +150,10 @@ export default function App() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [errorWarning, setErrorWarning] = useState<string | null>(null);
   
+  // CSV parsing progress (null while idle) and the active parsing worker
+  const [parseProgress, setParseProgress] = useState<number | null>(null);
+  const parseWorkerRef = useRef<Worker | null>(null);
+  
   // Expanded Javascript code inspection states
   const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({});
   
@@ -158,8 +165,24 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Stop any in-flight parsing worker when the app unmounts
+  useEffect(() => {
+    return () => {
+      parseWorkerRef.current?.terminate();
+      parseWorkerRef.current = null;
+    };
+  }, []);
+
+  // Tear down the current parsing worker and hide the progress indicator
+  const stopParsingWorker = () => {
+    parseWorkerRef.current?.terminate();
+    parseWorkerRef.current = null;
+    setParseProgress(null);
+  };
+
   // Reset current dataset and clean screen
   const handleResetDataset = () => {
+    stopParsingWorker();
     setDataset(null);
     setMessages([]);
     setUploadError(null);
@@ -197,72 +220,102 @@ export default function App() {
 
   const processFile = (file: File) => {
     setUploadError(null);
+
     if (!file.name.toLowerCase().endsWith('.csv')) {
       setUploadError('Unsupported file type. Please upload a valid CSV file.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      
-      Papa.parse(text, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: 'greedy',
-        complete: (results) => {
-          const rawRows = results.data as any[];
-          if (!rawRows || rawRows.length === 0) {
-            setUploadError('The selected CSV file appears to be empty.');
-            return;
-          }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setUploadError(
+        `That file is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The maximum supported size is 10MB — please upload a smaller CSV.`
+      );
+      return;
+    }
 
-          // Gather complete set of headers
-          const headersSet = new Set<string>();
-          rawRows.forEach(row => {
-            Object.keys(row).forEach(key => headersSet.add(key));
-          });
-          const headers = Array.from(headersSet);
+    // Drop any previously running parse before starting a new one
+    stopParsingWorker();
+    setParseProgress(0);
 
-          if (headers.length === 0) {
-            setUploadError('No valid headers or columns found in the CSV.');
-            return;
-          }
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL('./workers/csvWorker.ts', import.meta.url), { type: 'module' });
+    } catch (workerErr: any) {
+      setParseProgress(null);
+      setUploadError('Failed parsing CSV file: the background parser could not be started.');
+      return;
+    }
+    parseWorkerRef.current = worker;
 
-          // Infer types of each column
-          const types = inferColumnTypes(headers, rawRows);
+    // Tear the worker down and hide the progress indicator
+    const finishParsing = () => {
+      worker.terminate();
+      if (parseWorkerRef.current === worker) {
+        parseWorkerRef.current = null;
+      }
+      setParseProgress(null);
+    };
 
-          // Guard: Verify there is at least one numeric column
-          const numericCols = Object.keys(types).filter(col => types[col] === 'number');
-          if (numericCols.length === 0) {
-            setUploadError('This file has no numerical data — please upload a CSV with number columns');
-            return;
-          }
+    const acceptParsedRows = (rawRows: any[], headers: string[]) => {
+      if (!rawRows || rawRows.length === 0) {
+        setUploadError('The selected CSV file appears to be empty.');
+        return;
+      }
 
-          // Clean, coerce, and structure dataset
-          const cleanedRows = cleanAndCoerceData(headers, rawRows, types);
+      if (headers.length === 0) {
+        setUploadError('No valid headers or columns found in the CSV.');
+        return;
+      }
 
-          setDataset({
-            filename: file.name,
-            headers,
-            types,
-            rows: cleanedRows,
-            totalRows: cleanedRows.length
-          });
-          
-          // Clear any active chat logs when uploading a new CSV
-          setMessages([]);
-        },
-        error: (err) => {
-          setUploadError(`Failed parsing CSV file: ${err.message}`);
-        }
+      // Infer types of each column
+      const types = inferColumnTypes(headers, rawRows);
+
+      // Guard: Verify there is at least one numeric column
+      const numericCols = Object.keys(types).filter(col => types[col] === 'number');
+      if (numericCols.length === 0) {
+        setUploadError('This file has no numerical data — please upload a CSV with number columns');
+        return;
+      }
+
+      // Clean, coerce, and structure dataset
+      const cleanedRows = cleanAndCoerceData(headers, rawRows, types);
+
+      setDataset({
+        filename: file.name,
+        headers,
+        types,
+        rows: cleanedRows,
+        totalRows: cleanedRows.length
       });
+
+      // Clear any active chat logs when uploading a new CSV
+      setMessages([]);
     };
-    
-    reader.onerror = () => {
-      setUploadError('Error reading CSV file.');
+
+    worker.onmessage = (event: MessageEvent<CsvWorkerResponse>) => {
+      const message = event.data;
+
+      if (message.type === 'progress') {
+        setParseProgress(message.progress);
+        return;
+      }
+
+      finishParsing();
+
+      if (message.type === 'error') {
+        setUploadError(`Failed parsing CSV file: ${message.message}`);
+        return;
+      }
+
+      acceptParsedRows(message.rows, message.headers);
     };
-    reader.readAsText(file);
+
+    worker.onerror = () => {
+      finishParsing();
+      setUploadError('Failed parsing CSV file: the background parser stopped unexpectedly.');
+    };
+
+    worker.postMessage({ file });
   };
 
   // Dynamic suggested questions generator
@@ -512,6 +565,31 @@ Return a JSON object in this exact shape:
                 <p className="font-semibold text-slate-800 text-base">Drop your CSV here or click to browse</p>
                 <p className="text-sm text-slate-500 mt-1">Numerical data, any number of columns</p>
               </div>
+
+              {/* PARSING PROGRESS */}
+              {parseProgress !== null && (
+                <div className="w-full max-w-xs mt-1 animate-fadeIn">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <RefreshCw className="h-3 w-3 animate-spin text-indigo-500" />
+                      Parsing CSV in background...
+                    </span>
+                    <span className="font-mono text-indigo-600">{parseProgress}%</span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-valuenow={parseProgress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden"
+                  >
+                    <div
+                      className="h-full bg-indigo-500 rounded-full transition-all duration-200"
+                      style={{ width: `${parseProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               
               {uploadError && (
                 <div className="mt-2 flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-xs py-2 px-3.5 rounded-lg text-left max-w-sm">
