@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type ColumnType = 'number' | 'string';
+export type ColumnType = 'number' | 'string' | 'date' | 'boolean';
 
 export interface Row {
   [key: string]: string | number | boolean | null;

@@ -36,13 +36,43 @@ const generateId = () => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
+// Display labels for each inferred column type
+const COLUMN_TYPE_LABELS: Record<ColumnType, { short: string; badge: string }> = {
+  number: { short: 'num', badge: 'NUMERIC' },
+  string: { short: 'text', badge: 'TEXT' },
+  date: { short: 'date', badge: 'DATE' },
+  boolean: { short: 'bool', badge: 'BOOLEAN' }
+};
+
+// Boolean literals we accept when inferring/coercing boolean columns
+const parseBoolean = (value: string): boolean | null => {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === 'yes') return true;
+  if (normalized === 'false' || normalized === 'no') return false;
+  return null;
+};
+
+// Deliberately stricter than Date.parse so plain strings and numbers are not
+// mistaken for dates.
+const DATE_PATTERNS = [
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/,
+  /^\d{4}\/\d{1,2}\/\d{1,2}([ T]\d{1,2}:\d{2}(:\d{2})?)?$/,
+  /^\d{1,2}\/\d{1,2}\/\d{4}$/
+];
+
+const isDateLike = (value: string): boolean =>
+  DATE_PATTERNS.some((pattern) => pattern.test(value)) && !isNaN(Date.parse(value));
+
+// Numbers may arrive with currency symbols and thousands separators
+const isNumericLike = (value: string): boolean =>
+  /\d/.test(value) && !isNaN(Number(value.replace(/[^0-9.-]/g, '')));
+
 // Type inferring helper checking first 100 rows
 const inferColumnTypes = (headers: string[], data: any[]): Record<string, ColumnType> => {
   const types: Record<string, ColumnType> = {};
   
   headers.forEach((col) => {
-    let hasNumeric = false;
-    let hasText = false;
+    const kinds = new Set<ColumnType>();
 
     // Check up to 100 rows
     const limit = Math.min(data.length, 100);
@@ -51,42 +81,56 @@ const inferColumnTypes = (headers: string[], data: any[]): Record<string, Column
       if (val === undefined || val === null || val === '') {
         continue;
       }
-      
+
       if (typeof val === 'number') {
-        hasNumeric = true;
-      } else if (typeof val === 'string') {
-        const cleanVal = val.trim();
-        // Skip empty strings
-        if (cleanVal === '') continue;
-        
-        // Check if parsing as number succeeds
-        // We strip currency and commas first
-        const numCandidate = Number(cleanVal.replace(/[^0-9.-]/g, ''));
-        if (!isNaN(numCandidate) && cleanVal.match(/\d/)) {
-          hasNumeric = true;
-        } else {
-          hasText = true;
-        }
+        kinds.add('number');
+        continue;
+      }
+      if (typeof val === 'boolean') {
+        kinds.add('boolean');
+        continue;
+      }
+      if (typeof val !== 'string') {
+        kinds.add('string');
+        continue;
+      }
+
+      const cleanVal = val.trim();
+      // Skip empty strings
+      if (cleanVal === '') continue;
+
+      // Dates are checked before numbers: a value like "2024-01-05" would
+      // otherwise strip to the digits 20240105 and look numeric.
+      if (parseBoolean(cleanVal) !== null) {
+        kinds.add('boolean');
+      } else if (isDateLike(cleanVal)) {
+        kinds.add('date');
+      } else if (isNumericLike(cleanVal)) {
+        kinds.add('number');
       } else {
-        hasText = true;
+        kinds.add('string');
       }
     }
 
-    // Default to 'string' if no data, or if text exists
-    types[col] = (hasNumeric && !hasText) ? 'number' : 'string';
+    // A column is only given a type when every sampled value agrees on it.
+    // Inconsistent columns (and empty ones) fall back to 'string'.
+    types[col] = kinds.size === 1 ? Array.from(kinds)[0] : 'string';
   });
   
   return types;
 };
 
-// Cleans data and coerces number columns appropriately
+// Cleans data and coerces columns to their inferred type
 const cleanAndCoerceData = (headers: string[], rawRows: any[], types: Record<string, ColumnType>): Row[] => {
   return rawRows.map((row) => {
     const newRow: Row = {};
     headers.forEach((col) => {
       const val = row[col];
-      if (types[col] === 'number') {
-        if (val === undefined || val === null || String(val).trim() === '') {
+      const type = types[col];
+      const isEmpty = val === undefined || val === null || String(val).trim() === '';
+
+      if (type === 'number') {
+        if (isEmpty) {
           newRow[col] = null;
         } else if (typeof val === 'number') {
           newRow[col] = val;
@@ -96,6 +140,17 @@ const cleanAndCoerceData = (headers: string[], rawRows: any[], types: Record<str
           const num = Number(cleanVal);
           newRow[col] = isNaN(num) ? null : num;
         }
+      } else if (type === 'boolean') {
+        if (isEmpty) {
+          newRow[col] = null;
+        } else if (typeof val === 'boolean') {
+          newRow[col] = val;
+        } else {
+          newRow[col] = parseBoolean(String(val));
+        }
+      } else if (type === 'date') {
+        // Dates are kept verbatim so nothing is silently rewritten
+        newRow[col] = isEmpty ? '' : String(val).trim();
       } else {
         newRow[col] = val === undefined || val === null ? '' : String(val);
       }
@@ -211,6 +266,40 @@ export default function App() {
         dynamicTyping: true,
         skipEmptyLines: 'greedy',
         complete: (results) => {
+          // PapaParse silently renames duplicate headers (Name, Name_1), which
+          // would silently drop one of the user's columns.
+          const renamedHeaders = (results.meta as any)?.renamedHeaders;
+          if (renamedHeaders && Object.keys(renamedHeaders).length > 0) {
+            const duplicates = Array.from(new Set(Object.values(renamedHeaders) as string[]));
+            setUploadError(
+              `Duplicate column headers found: ${duplicates.map((name) => `"${name}"`).join(', ')}. ` +
+              'Every column needs a unique name — please rename the duplicates and upload again.'
+            );
+            return;
+          }
+
+          // Rows with a different column count than the header are reported
+          // instead of being silently padded or truncated.
+          const fieldMismatches = (results.errors || []).filter(
+            (err: any) => err.type === 'FieldMismatch' || err.code === 'TooFewFields' || err.code === 'TooManyFields'
+          );
+          if (fieldMismatches.length > 0) {
+            const expectedColumns = (results.meta as any)?.fields?.length;
+            const rowNumbers = fieldMismatches
+              .slice(0, 5)
+              .map((err: any) => (typeof err.row === 'number' ? err.row + 1 : '?'));
+            const extra = fieldMismatches.length > rowNumbers.length
+              ? ` and ${fieldMismatches.length - rowNumbers.length} more`
+              : '';
+            setUploadError(
+              `Malformed CSV: ${fieldMismatches.length} row${fieldMismatches.length === 1 ? '' : 's'} ` +
+              `(${rowNumbers.join(', ')}${extra}) do${fieldMismatches.length === 1 ? 'es' : ''} not match the header. ` +
+              `Every row must have exactly ${expectedColumns ?? 'the same number of'} column${expectedColumns === 1 ? '' : 's'} — ` +
+              'please fix the file and upload again.'
+            );
+            return;
+          }
+
           const rawRows = results.data as any[];
           if (!rawRows || rawRows.length === 0) {
             setUploadError('The selected CSV file appears to be empty.');
@@ -549,12 +638,15 @@ Return a JSON object in this exact shape:
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Data Preview</h2>
                 <div className="flex gap-2">
-                  <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
-                    {Object.values(dataset.types).filter(t => t === 'number').length} NUMERIC
-                  </span>
-                  <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
-                    {Object.values(dataset.types).filter(t => t === 'string').length} TEXT
-                  </span>
+                  {(['number', 'date', 'boolean', 'string'] as ColumnType[]).map((type) => {
+                    const count = Object.values(dataset.types).filter(t => t === type).length;
+                    if (count === 0) return null;
+                    return (
+                      <span key={type} className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
+                        {count} {COLUMN_TYPE_LABELS[type].badge}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -568,7 +660,7 @@ Return a JSON object in this exact shape:
                           <div className="flex flex-col gap-0.5">
                             <span className="uppercase">{col}</span>
                             <span className="font-normal opacity-60 text-[9px] font-mono lowercase bg-slate-100 px-1 py-0.2 rounded-sm w-fit">
-                              {dataset.types[col] === 'number' ? 'num' : 'text'}
+                              {COLUMN_TYPE_LABELS[dataset.types[col]]?.short ?? 'text'}
                             </span>
                           </div>
                         </th>
