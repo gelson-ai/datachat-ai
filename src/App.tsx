@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { ColumnType, Row, ChatMessage, DatasetInfo, AnalysisOperation } from './types';
 import { runOperation } from './analysis/runOperation';
+import DataSummary from './components/DataSummary';
 
 // Helper to generate IDs safely
 const generateId = () => {
@@ -595,6 +596,9 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               </p>
             </div>
           )}
+
+          {/* DATA SUMMARY PANEL */}
+          {dataset && <DataSummary dataset={dataset} />}
 
           {/* SUGGESTED CHIPS */}
           {dataset && (
