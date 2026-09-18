@@ -542,7 +542,7 @@ export default function App() {
   };
 
   // Parsing helper to handle API response and strip potential markdown wrappers
-  const parseOpenAIResponse = (text: string) => {
+  const parseModelResponse = (text: string) => {
     let cleanText = text.trim();
     if (cleanText.startsWith('```')) {
       const lines = cleanText.split('\n');
@@ -570,7 +570,7 @@ export default function App() {
     }
   };
 
-  // OpenAI Chat completions integration
+  // Gemini generateContent integration (proxied through the local API server)
   const handleAsk = async (questionText: string) => {
     const trimmedQuestion = questionText.trim();
     if (!trimmedQuestion) return;
@@ -642,8 +642,8 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
       }
 
       const resBody = await response.json();
-      const rawText = resBody.choices?.[0]?.message?.content || '{}';
-      const parsedJSON = parseOpenAIResponse(rawText);
+      const rawText = resBody.text || '{}';
+      const parsedJSON = parseModelResponse(rawText);
 
       if (!parsedJSON.operation) {
         throw new Error("Assistant response JSON did not include an 'operation' parameter.");
@@ -696,7 +696,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
           <div className="flex items-baseline gap-2">
             <span className="font-bold text-xl tracking-tight text-slate-900">DataChat AI</span>
             <span className="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md font-mono">
-              GPT-4o-Mini
+              Gemini 2.5 Flash
             </span>
           </div>
         </div>
