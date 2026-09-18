@@ -82,10 +82,10 @@ export const summarizeColumns = (dataset: DatasetInfo): ColumnStats[] =>
   });
 
 const Stat = ({ label, value }: { label: string; value: number | null }) => (
-  <div className="bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 min-w-0">
-    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
-    <p className="text-[12px] font-mono font-medium text-slate-700 truncate">
-      {value === null ? <span className="text-slate-300 italic">n/a</span> : formatNumber(value)}
+  <div className="bg-[#F7F9FA] border border-[#E4E9EE] rounded-xs px-2 py-1.5 min-w-0">
+    <p className="text-[9px] font-bold uppercase tracking-widest text-[#8B95A0]">{label}</p>
+    <p className="text-[12px] font-mono font-medium text-[#334155] truncate">
+      {value === null ? <span className="text-[#9AA7B4] italic">n/a</span> : formatNumber(value)}
     </p>
   </div>
 );
@@ -95,33 +95,33 @@ export default function DataSummary({ dataset }: DataSummaryProps) {
   const numericCount = columns.filter((column) => column.type === 'number').length;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl flex flex-col card-shadow overflow-hidden animate-fadeIn">
-      <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Data Summary</h2>
-        <span className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
+    <div className="bg-white border border-[#D5DBE1] rounded-sm flex flex-col card-shadow overflow-hidden animate-fadeIn">
+      <div className="p-3.5 border-b border-[#E4E9EE] flex items-center justify-between bg-[#F7F9FA]">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-[#5B6673]">Data Summary</h2>
+        <span className="px-2 py-0.5 bg-[#EEF1F4] text-[10px] font-semibold rounded-xs text-[#5B6673] border border-[#D5DBE1]">
           {columns.length} COLUMNS
         </span>
       </div>
 
       {columns.length === 0 ? (
-        <p className="p-4 text-xs text-slate-400 italic">No columns available to summarize.</p>
+        <p className="p-4 text-xs text-[#8B95A0] italic">No columns available to summarize.</p>
       ) : (
-        <div className="overflow-auto custom-scrollbar max-h-[300px] divide-y divide-slate-100">
+        <div className="overflow-auto custom-scrollbar max-h-[300px] divide-y divide-[#E4E9EE]">
           {columns.map((column) => (
             <div key={column.name} className="p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] font-semibold text-slate-700 truncate uppercase">
+                <span className="text-[12px] font-semibold text-[#334155] truncate uppercase">
                   {column.name}
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="px-1.5 py-0.5 bg-slate-100 text-[9px] font-semibold rounded-sm text-slate-600 font-mono lowercase">
+                  <span className="px-1.5 py-0.5 bg-[#E4E9EE] text-[9px] font-semibold rounded-xs text-[#5B6673] font-mono lowercase">
                     {column.type}
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 text-[9px] font-semibold rounded-sm font-mono ${
+                    className={`px-1.5 py-0.5 text-[9px] font-semibold rounded-xs font-mono ${
                       column.missing > 0
-                        ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                        : 'bg-slate-50 text-slate-400 border border-slate-100'
+                        ? 'bg-[#FFFAEB] text-[#B54708] border border-[#FEC84B]'
+                        : 'bg-[#F4F6F8] text-[#8B95A0] border border-[#E4E9EE]'
                     }`}
                   >
                     {column.missing} missing
@@ -141,7 +141,7 @@ export default function DataSummary({ dataset }: DataSummaryProps) {
         </div>
       )}
 
-      <p className="text-[11px] text-slate-400 p-3 text-right italic border-t border-slate-50">
+      <p className="text-[11px] text-[#8B95A0] p-3 text-right italic border-t border-[#EDF0F3]">
         {numericCount > 0
           ? 'Min / max / average exclude missing values.'
           : 'No numeric columns — min / max / average unavailable.'}
