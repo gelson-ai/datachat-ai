@@ -237,11 +237,11 @@ const FormattedAnswer: React.FC<{ text: string }> = ({ text }) => {
   const parts = text.split(regex);
   
   if (parts.length <= 1) {
-    return <span className="text-slate-800 text-[15px] font-medium leading-relaxed">{text}</span>;
+    return <span className="text-[#E6E6F0] text-[15px] font-medium leading-relaxed">{text}</span>;
   }
   
   return (
-    <span className="text-slate-800 text-[15px] font-medium leading-relaxed">
+    <span className="text-[#E6E6F0] text-[15px] font-medium leading-relaxed">
       {parts.map((part, index) => {
         const isMatch = regex.test(part);
         regex.lastIndex = 0; // reset
@@ -250,7 +250,7 @@ const FormattedAnswer: React.FC<{ text: string }> = ({ text }) => {
           return (
             <code 
               key={index} 
-              className="font-mono bg-indigo-50/70 text-indigo-600 px-1.5 py-0.5 rounded text-[13px] font-semibold border border-indigo-100/30"
+              className="font-mono bg-[#0A2A30] text-[#00E5FF] px-1.5 py-0.5 rounded text-[13px] font-semibold border border-[#00E5FF4D]"
             >
               {part}
             </code>
@@ -687,15 +687,15 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col text-[#0F172A]">
+    <div className="min-h-screen bg-[#07070B] font-sans flex flex-col text-[#E6E6F0]">
       
       {/* HEADER SECTION */}
-      <header className="w-full bg-white border-b border-slate-200 py-4 px-8 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 z-50">
+      <header className="w-full bg-[#0A0A12] border-b border-[#22222E] py-4 px-8 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 z-50 shadow-[0_1px_0_rgba(0,229,255,0.18),0_10px_30px_-16px_rgba(0,229,255,0.45)]">
         <div className="flex items-center gap-3">
-          <div className="w-3 h-3 bg-indigo-500 rounded-full shrink-0"></div>
+          <div className="w-3 h-3 bg-[#00E5FF] rounded-full shrink-0 glow-cyan"></div>
           <div className="flex items-baseline gap-2">
-            <span className="font-bold text-xl tracking-tight text-slate-900">DataChat AI</span>
-            <span className="text-[10px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md font-mono">
+            <span className="font-display font-bold text-xl tracking-wide text-[#E6E6F0] text-glow-cyan">DataChat AI</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 bg-[#1A0A18] text-[#FF2BD6] border border-[#FF2BD680] rounded-md font-mono glow-magenta">
               Gemini 2.5 Flash
             </span>
           </div>
@@ -705,7 +705,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
           type="button"
           onClick={handleClearSession}
           title="Remove the saved dataset and chat from this browser"
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-white border border-slate-200 hover:text-red-600 hover:border-red-200 hover:bg-red-50/60 px-3 py-1.5 rounded-lg transition-all cursor-pointer shrink-0"
+          className="flex items-center gap-1.5 text-xs font-semibold text-[#9A9AB0] bg-transparent border border-[#2A2A38] hover:text-[#FF4D6D] hover:border-[#FF4D6D] hover:bg-[#1A0A12] px-3 py-1.5 rounded-lg transition-all cursor-pointer shrink-0"
         >
           <Trash2 className="h-3.5 w-3.5" />
           Clear session
@@ -729,8 +729,8 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-2xl p-8 md:p-10 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-4 ${
                 isDragging 
-                  ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]' 
-                  : 'border-slate-350 bg-white hover:border-indigo-400 hover:bg-slate-50/40'
+                  ? 'border-[#00E5FF] bg-[#0A1A1E] shadow-[0_0_0_1px_rgba(0,229,255,0.7),0_0_28px_rgba(0,229,255,0.45),inset_0_0_24px_rgba(0,229,255,0.1)] scale-[1.01]' 
+                  : 'border-[#00E5FF66] bg-[#0B0B12] hover:border-[#00E5FF] hover:bg-[#0A1A1E] hover:shadow-[0_0_0_1px_rgba(0,229,255,0.45),0_0_18px_rgba(0,229,255,0.3)]'
               }`}
             >
               <input 
@@ -741,34 +741,34 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                 className="hidden"
               />
               <div className={`h-14 w-14 rounded-full flex items-center justify-center transition-all ${
-                isDragging ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
+                isDragging ? 'bg-[#0A2A30] text-[#00E5FF] glow-cyan-lg' : 'bg-[#141420] text-[#7DE9FF]'
               }`}>
                 <Upload className="h-7 w-7" />
               </div>
               <div>
-                <p className="font-semibold text-slate-800 text-base">Drop your CSV here or click to browse</p>
-                <p className="text-sm text-slate-500 mt-1">Numerical data, any number of columns</p>
+                <p className="font-display font-bold text-[#E6E6F0] text-base tracking-wide">Drop your CSV here or click to browse</p>
+                <p className="text-sm text-[#8A8AA3] mt-1">Numerical data, any number of columns</p>
               </div>
 
               {/* PARSING PROGRESS */}
               {parseProgress !== null && (
                 <div className="w-full max-w-xs mt-1 animate-fadeIn">
-                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-[#8A8AA3] mb-1.5 font-mono">
                     <span className="flex items-center gap-1.5">
-                      <RefreshCw className="h-3 w-3 animate-spin text-indigo-500" />
+                      <RefreshCw className="h-3 w-3 animate-spin text-[#00E5FF]" />
                       Parsing CSV in background...
                     </span>
-                    <span className="font-mono text-indigo-600">{parseProgress}%</span>
+                    <span className="font-mono text-[#00E5FF]">{parseProgress}%</span>
                   </div>
                   <div
                     role="progressbar"
                     aria-valuenow={parseProgress}
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden"
+                    className="h-1.5 w-full bg-[#1A1A26] rounded-full overflow-hidden"
                   >
                     <div
-                      className="h-full bg-indigo-500 rounded-full transition-all duration-200"
+                      className="h-full bg-[#00E5FF] rounded-full transition-all duration-200 shadow-[0_0_10px_rgba(0,229,255,0.8)]"
                       style={{ width: `${parseProgress}%` }}
                     />
                   </div>
@@ -776,7 +776,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               )}
               
               {uploadError && (
-                <div className="mt-2 flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-xs py-2 px-3.5 rounded-lg text-left max-w-sm">
+                <div className="mt-2 flex items-center gap-2 bg-[#1A0A12] border border-[#FF4D6D66] text-[#FF4D6D] text-xs py-2 px-3.5 rounded-lg text-left max-w-sm">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>{uploadError}</span>
                 </div>
@@ -784,21 +784,21 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
             </div>
           ) : (
             /* COLLAPSED SUCCESS BAR */
-            <div className="bg-indigo-50/30 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between card-shadow animate-fadeIn">
+            <div className="bg-[#0E0E14] border border-[#00E5FF4D] rounded-2xl p-4 flex items-center justify-between card-shadow animate-fadeIn">
               <div className="flex items-center gap-3 overflow-hidden">
-                <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600 shrink-0">
+                <div className="p-2 bg-[#0A2A30] rounded-lg text-[#00E5FF] shrink-0">
                   <FileText className="h-5 w-5" />
                 </div>
                 <div className="overflow-hidden">
-                  <p className="text-sm font-semibold text-slate-900 truncate">{dataset.filename}</p>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                  <p className="text-sm font-semibold text-[#E6E6F0] truncate">{dataset.filename}</p>
+                  <p className="text-xs text-[#8A8AA3] font-mono mt-0.5">
                     {dataset.totalRows.toLocaleString()} rows • {dataset.headers.length} columns
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleResetDataset}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-white border border-slate-200/80 hover:border-indigo-200 px-3 py-1.5 rounded-lg transition-all shrink-0 cursor-pointer"
+                className="text-xs font-semibold text-[#00E5FF] hover:text-[#7DE9FF] bg-[#141420] border border-[#2A2A38] hover:border-[#00E5FF] px-3 py-1.5 rounded-lg transition-all shrink-0 cursor-pointer"
               >
                 Replace
               </button>
@@ -807,15 +807,15 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
 
           {/* PREVIEW CONTAINER */}
           {dataset && (
-            <div className="bg-white border border-slate-200 rounded-2xl flex flex-col card-shadow overflow-hidden animate-fadeIn">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Data Preview</h2>
+            <div className="bg-[#0E0E14] border border-[#22222E] rounded-2xl flex flex-col card-shadow overflow-hidden animate-fadeIn">
+              <div className="p-4 border-b border-[#22222E] flex items-center justify-between bg-[#101018]">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-[#00E5FF] font-mono">Data Preview</h2>
                 <div className="flex gap-2">
                   {(['number', 'date', 'boolean', 'string'] as ColumnType[]).map((type) => {
                     const count = Object.values(dataset.types).filter(t => t === type).length;
                     if (count === 0) return null;
                     return (
-                      <span key={type} className="px-2 py-0.5 bg-slate-100 text-[10px] font-semibold rounded-md text-slate-600">
+                      <span key={type} className="px-2 py-0.5 bg-[#1A1A26] text-[10px] font-semibold rounded-md text-[#9A9AB0] border border-[#2A2A38]">
                         {count} {COLUMN_TYPE_LABELS[type].badge}
                       </span>
                     );
@@ -826,13 +826,13 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               {/* TABLE CONTAINER */}
               <div className="overflow-auto custom-scrollbar flex-grow max-h-[300px]">
                 <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-white shadow-xs z-10">
-                    <tr className="border-b border-slate-100">
+                  <thead className="sticky top-0 bg-[#101018] shadow-xs z-10">
+                    <tr className="border-b border-[#22222E]">
                       {dataset.headers.map((col) => (
-                        <th key={col} className="p-3 text-[11px] font-semibold text-slate-500 bg-white">
+                        <th key={col} className="p-3 text-[11px] font-semibold text-[#8A8AA3] bg-[#101018] font-mono">
                           <div className="flex flex-col gap-0.5">
                             <span className="uppercase">{col}</span>
-                            <span className="font-normal opacity-60 text-[9px] font-mono lowercase bg-slate-100 px-1 py-0.2 rounded-sm w-fit">
+                            <span className="font-normal opacity-60 text-[9px] font-mono lowercase bg-[#1A1A26] px-1 py-0.2 rounded-sm w-fit">
                               {COLUMN_TYPE_LABELS[dataset.types[col]]?.short ?? 'text'}
                             </span>
                           </div>
@@ -840,21 +840,21 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white font-mono text-[12px] text-slate-700">
+                  <tbody className="divide-y divide-[#1E1E2A] bg-[#0E0E14] font-mono text-[12px] text-[#C9C9DA]">
                     {dataset.rows.slice(0, 10).map((row, rowIndex) => (
-                      <tr key={rowIndex} className="hover:bg-slate-50/55 even:bg-slate-50/20 transition-all border-b border-slate-50 last:border-b-0">
+                      <tr key={rowIndex} className="hover:bg-[#151522] even:bg-[#111119] transition-all border-b border-[#1E1E2A] last:border-b-0">
                         {dataset.headers.map((col) => {
                           const val = row[col];
                           const isNumeric = dataset.types[col] === 'number';
                           return (
                             <td 
                               key={col} 
-                              className={`p-3 text-slate-700 font-mono ${
-                                isNumeric ? 'text-indigo-600 font-medium' : 'text-slate-600'
+                              className={`p-3 text-[#C9C9DA] font-mono ${
+                                isNumeric ? 'text-[#00E5FF] font-medium' : 'text-[#9A9AB0]'
                               }`}
                             >
                               {val === null || val === undefined ? (
-                                <span className="text-slate-300 italic">null</span>
+                                <span className="text-[#4A4A5E] italic">null</span>
                               ) : (
                                 String(val)
                               )}
@@ -866,7 +866,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                   </tbody>
                 </table>
               </div>
-              <p className="text-[11px] text-slate-400 p-3 text-right italic border-t border-slate-50">
+              <p className="text-[11px] text-[#6B6B80] p-3 text-right italic border-t border-[#1E1E2A]">
                 Showing first {Math.min(dataset.rows.length, 10)} rows for context.
               </p>
             </div>
@@ -877,14 +877,14 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
 
           {/* SUGGESTED CHIPS */}
           {dataset && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 card-shadow flex flex-col gap-3 animate-fadeIn">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Suggested Queries</h2>
+            <div className="bg-[#0E0E14] border border-[#22222E] rounded-2xl p-4 card-shadow flex flex-col gap-3 animate-fadeIn">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-[#FF2BD6] font-mono">Suggested Queries</h2>
               <div className="flex flex-wrap gap-2 mt-1">
                 {getSuggestedQuestions().map((suggestion, idx) => (
                   <button
                     key={idx}
                     onClick={() => handleSuggestionClick(suggestion)}
-                    className="px-3 py-1.5 border border-slate-200 rounded-full text-xs text-slate-600 hover:border-indigo-300 hover:bg-indigo-50/80 transition-all cursor-pointer font-medium"
+                    className="px-3 py-1.5 border border-[#2A2A38] rounded-full text-xs text-[#C9C9DA] bg-[#141420] hover:border-[#FF2BD6] hover:text-[#FF2BD6] hover:bg-[#1A0A18] transition-all cursor-pointer font-medium"
                   >
                     {suggestion}
                   </button>
@@ -896,13 +896,13 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
 
         {/* RIGHT COLUMN: CHAT PANEL */}
         <section className="lg:col-span-8 h-full">
-          <div className="bg-white border border-slate-200 rounded-2xl card-shadow h-[720px] flex flex-col overflow-hidden">
+          <div className="bg-[#0E0E14] border border-[#22222E] rounded-2xl card-shadow h-[720px] flex flex-col overflow-hidden">
             
             {/* HEADER */}
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white">
-              <h2 className="text-base font-bold text-slate-900">Analysis Chat</h2>
+            <div className="p-4 border-b border-[#22222E] flex items-center justify-between bg-[#101018]">
+              <h2 className="font-display text-base font-bold text-[#E6E6F0] text-glow-cyan">Analysis Chat</h2>
               {dataset && (
-                <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5 bg-slate-50 border border-slate-150 px-3 py-1 rounded-full">
+                <span className="text-xs font-medium text-[#C9C9DA] flex items-center gap-1.5 bg-[#1A1A26] border border-[#2A2A38] px-3 py-1 rounded-full font-mono">
                   <FileSpreadsheet className="h-3.5 w-3.5" />
                   {dataset.filename} is active
                 </span>
@@ -910,17 +910,17 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
             </div>
 
             {/* CHAT CHANNELS */}
-            <div className="flex-grow overflow-y-auto custom-scrollbar p-6 space-y-6 bg-slate-50/30">
+            <div className="flex-grow overflow-y-auto custom-scrollbar p-6 space-y-6 bg-[#08080D]">
               
               {/* EMPTY STATE */}
               {!dataset && messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 max-w-sm mx-auto my-auto gap-4">
-                  <div className="h-14 w-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                  <div className="h-14 w-14 rounded-full bg-[#0A2A30] flex items-center justify-center text-[#00E5FF] glow-cyan">
                     <Database className="h-6 w-6" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-slate-800 text-sm">Upload a CSV to start</h4>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    <h4 className="font-display font-bold text-[#00E5FF] text-sm tracking-wide text-glow-cyan">Upload a CSV to start</h4>
+                    <p className="text-xs text-[#8A8AA3] mt-1 leading-relaxed">
                       Once you upload a numerical dataset on the left, you can ask plain English questions and get immediate mathematical answers computed locally.
                     </p>
                   </div>
@@ -934,7 +934,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                 if (isUser) {
                   return (
                     <div key={msg.id} className="flex justify-end animate-fadeIn">
-                      <div className="max-w-[80%] bg-[#6366F1] text-white rounded-2xl rounded-br-[2px] p-4 card-shadow">
+                      <div className="max-w-[80%] bg-[#2B0A26] text-[#FFE6FA] border border-[#FF2BD6] rounded-2xl rounded-br-[2px] p-4 glow-magenta">
                         <p className="text-sm font-medium leading-relaxed">{msg.content}</p>
                       </div>
                     </div>
@@ -946,18 +946,18 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                     <div key={msg.id} className="flex justify-start animate-fadeIn">
                       <div className={`max-w-[85%] w-full rounded-2xl rounded-bl-[2px] p-5 border transition-all card-shadow ${
                         hasError 
-                          ? 'bg-red-50/50 border-red-100 text-red-900' 
-                          : 'bg-white border-slate-200 text-slate-900'
+                          ? 'bg-[#1A0A12] border-[#FF4D6D66] text-[#FFD9E0]' 
+                          : 'bg-[#0E0E14] border-[#00E5FF4D] text-[#E6E6F0]'
                       }`}>
                         
                         {/* Conversational sentence output */}
                         <div className="flex items-start gap-2.5">
                           {!hasError ? (
-                            <div className="h-6 w-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                            <div className="h-6 w-6 rounded-md bg-[#0A2A30] text-[#00E5FF] flex items-center justify-center shrink-0 mt-0.5">
                               <Sparkles className="h-3.5 w-3.5" />
                             </div>
                           ) : (
-                            <div className="h-6 w-6 rounded-md bg-red-100 text-red-600 flex items-center justify-center shrink-0 mt-0.5">
+                            <div className="h-6 w-6 rounded-md bg-[#2A0A14] text-[#FF4D6D] flex items-center justify-center shrink-0 mt-0.5">
                               <AlertCircle className="h-3.5 w-3.5" />
                             </div>
                           )}
@@ -967,17 +967,17 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                             
                             {/* OPERATION INSPECTOR PANEL (only if an operation was requested) */}
                             {msg.code && (
-                              <div className="mt-4 border-t border-slate-100 pt-3">
+                              <div className="mt-4 border-t border-[#22222E] pt-3">
                                 <button
                                   onClick={() => toggleCodeExpansion(msg.id)}
-                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8A8AA3] hover:text-[#00E5FF] transition-colors cursor-pointer"
                                 >
                                   <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${expandedCodes[msg.id] ? 'rotate-90' : ''}`} />
                                   {expandedCodes[msg.id] ? 'Hide analysis operation' : 'View analysis operation'}
                                 </button>
                                 
                                 {expandedCodes[msg.id] && (
-                                  <div className="mt-2 text-[11px] font-mono bg-slate-950 text-indigo-300 rounded-lg p-3.5 overflow-x-auto border border-slate-800 shadow-inner select-all leading-relaxed">
+                                  <div className="mt-2 text-[11px] font-mono bg-[#050509] text-[#00E5FF] rounded-lg p-3.5 overflow-x-auto border border-[#00E5FF4D] glow-cyan select-all leading-relaxed">
                                     <pre className="whitespace-pre">{msg.code}</pre>
                                   </div>
                                 )}
@@ -986,8 +986,8 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
 
                             {/* Technical debug error collapse */}
                             {hasError && msg.error && (
-                              <div className="mt-2 border-t border-red-100/70 pt-2">
-                                <p className="text-[11px] font-mono text-red-700 bg-red-50 border border-red-100/50 rounded-lg p-2.5 overflow-x-auto leading-relaxed whitespace-pre-wrap">
+                              <div className="mt-2 border-t border-[#FF4D6D40] pt-2">
+                                <p className="text-[11px] font-mono text-[#FF8FA3] bg-[#1A0A12] border border-[#FF4D6D4D] rounded-lg p-2.5 overflow-x-auto leading-relaxed whitespace-pre-wrap">
                                   {msg.error}
                                 </p>
                               </div>
@@ -1003,11 +1003,11 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
               {/* THINKING ANIMATION */}
               {isLoading && (
                 <div className="flex justify-start animate-fadeIn">
-                  <div className="flex items-center gap-3 text-slate-400">
+                  <div className="flex items-center gap-3 text-[#8A8AA3]">
                     <div className="flex gap-1">
-                      <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                      <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-[#00E5FF] rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                      <div className="w-1.5 h-1.5 bg-[#00E5FF] rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-1.5 h-1.5 bg-[#00E5FF] rounded-full animate-bounce"></div>
                     </div>
                     <span className="text-xs italic">DataChat is thinking...</span>
                   </div>
@@ -1018,13 +1018,13 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
             </div>
 
             {/* INPUT BAR */}
-            <div className="p-4 bg-white border-t border-slate-100">
+            <div className="p-4 bg-[#0A0A12] border-t border-[#22222E]">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleAsk(input);
                 }}
-                className="flex gap-3 bg-white border border-slate-200 rounded-full p-1.5 pl-6 shadow-xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all"
+                className="flex gap-3 bg-[#0E0E14] border border-[#2A2A38] rounded-full p-1.5 pl-6 focus-within:ring-2 focus-within:ring-[#FF2BD633] focus-within:border-[#FF2BD6] transition-all"
               >
                 <input
                   id="query-input"
@@ -1033,12 +1033,12 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
                   onChange={(e) => setInput(e.target.value)}
                   disabled={!dataset || isLoading}
                   placeholder={dataset ? "Ask about your data..." : "Upload a CSV to start asking..."}
-                  className="flex-grow text-sm focus:outline-hidden bg-transparent border-0 placeholder:text-slate-400"
+                  className="flex-grow text-sm text-[#E6E6F0] focus:outline-hidden bg-transparent border-0 placeholder:text-[#6B6B80]"
                 />
                 <button
                   type="submit"
                   disabled={!input.trim() || !dataset || isLoading}
-                  className="w-10 h-10 flex items-center justify-center bg-indigo-500 text-white rounded-full hover:bg-indigo-600 transition-colors disabled:bg-slate-100 disabled:text-slate-350 cursor-pointer shadow-xs focus:outline-hidden shrink-0"
+                  className="w-10 h-10 flex items-center justify-center bg-[#FF2BD6] text-[#08080D] rounded-full hover:bg-[#FF62E0] transition-colors disabled:bg-[#1A1A26] disabled:text-[#4A4A5E] disabled:shadow-none cursor-pointer shadow-[0_0_0_1px_rgba(255,43,214,0.55),0_0_20px_rgba(255,43,214,0.42)] focus:outline-hidden shrink-0"
                 >
                   <ArrowRight className="h-5 w-5" strokeWidth={2.5} />
                 </button>
@@ -1046,7 +1046,7 @@ Return a JSON object in this exact shape, with no extra keys and no markdown fen
 
               {/* INLINE STATUS WARNINGS */}
               {errorWarning && (
-                <div className="flex items-center gap-1.5 text-xs text-amber-600 mt-2.5 px-2.5 animate-fadeIn">
+                <div className="flex items-center gap-1.5 text-xs text-[#FFB020] mt-2.5 px-2.5 animate-fadeIn">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   <span>{errorWarning}</span>
                 </div>
