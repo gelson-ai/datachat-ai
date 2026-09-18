@@ -7,12 +7,25 @@ config({ path: '.env.local' });
 const app = express();
 const port = 3001;
 
-/** How long to wait for OpenAI before giving up on the request. */
+/** Gemini model used to plan the analysis operation. Override with GEMINI_MODEL. */
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+/** How long to wait for Gemini before giving up on the request. */
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
 /** Basic rate limit applied across this process. */
 const RATE_LIMIT_MAX_REQUESTS = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
+
+/** Shape of the Gemini `generateContent` response fields we read. */
+type GeminiResponse = {
+  candidates?: Array<{
+    finishReason?: string;
+    content?: { parts?: Array<{ text?: string }> };
+  }>;
+};
 
 let rateLimitCount = 0;
 let rateLimitWindowStartedAt = Date.now();
@@ -57,7 +70,7 @@ app.post('/api/chat', async (request: Request, response: Response) => {
     return;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     response.status(503).json({ error: 'The analysis service is unavailable. Please try again.' });
     return;
@@ -68,38 +81,56 @@ app.post('/api/chat', async (request: Request, response: Response) => {
   const timeoutId = setTimeout(() => abortController.abort(), UPSTREAM_TIMEOUT_MS);
 
   try {
-    const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+    const upstream = await fetch(GEMINI_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
-        ],
-        response_format: { type: 'json_object' },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0,
+        },
       }),
       signal: abortController.signal,
     });
 
     if (!upstream.ok) {
-      console.error(`[${errorId}] OpenAI returned ${upstream.status}: ${await upstream.text()}`);
+      console.error(`[${errorId}] Gemini returned ${upstream.status}: ${await upstream.text()}`);
+
+      if (upstream.status === 429) {
+        response.status(429).json({
+          error: `The analysis service is busy. Please wait a moment and try again. Reference: ${errorId}`,
+        });
+        return;
+      }
+
       response.status(502).json({ error: `The analysis service is unavailable. Reference: ${errorId}` });
       return;
     }
 
-    response.json(await upstream.json());
+    const payload = (await upstream.json()) as GeminiResponse;
+    const candidate = payload.candidates?.[0];
+    const text = candidate?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
+
+    if (!text) {
+      console.error(`[${errorId}] Gemini returned no text. finishReason=${candidate?.finishReason}`);
+      response.status(502).json({ error: `The analysis service is unavailable. Reference: ${errorId}` });
+      return;
+    }
+
+    response.json({ text });
   } catch (error) {
     if (abortController.signal.aborted) {
-      console.error(`[${errorId}] OpenAI request timed out after ${UPSTREAM_TIMEOUT_MS}ms.`);
+      console.error(`[${errorId}] Gemini request timed out after ${UPSTREAM_TIMEOUT_MS}ms.`);
       response.status(504).json({ error: `The analysis service timed out. Reference: ${errorId}` });
       return;
     }
 
-    console.error(`[${errorId}] OpenAI request failed:`, error);
+    console.error(`[${errorId}] Gemini request failed:`, error);
     response.status(502).json({ error: `The analysis service is unavailable. Reference: ${errorId}` });
   } finally {
     clearTimeout(timeoutId);
