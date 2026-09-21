@@ -1,31 +1,16 @@
 import crypto from 'node:crypto';
 import { config } from 'dotenv';
 import express, { type Request, type Response } from 'express';
+import { requestAnalysisOperation } from './geminiClient.ts';
 
 config({ path: '.env.local' });
 
 const app = express();
 const port = 3001;
 
-/** Gemini model used to plan the analysis operation. Override with GEMINI_MODEL. */
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
-
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
-/** How long to wait for Gemini before giving up on the request. */
-const UPSTREAM_TIMEOUT_MS = 15_000;
-
 /** Basic rate limit applied across this process. */
 const RATE_LIMIT_MAX_REQUESTS = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-
-/** Shape of the Gemini `generateContent` response fields we read. */
-type GeminiResponse = {
-  candidates?: Array<{
-    finishReason?: string;
-    content?: { parts?: Array<{ text?: string }> };
-  }>;
-};
 
 let rateLimitCount = 0;
 let rateLimitWindowStartedAt = Date.now();
@@ -77,64 +62,31 @@ app.post('/api/chat', async (request: Request, response: Response) => {
   }
 
   const errorId = crypto.randomUUID();
-  const abortController = new AbortController();
-  const timeoutId = setTimeout(() => abortController.abort(), UPSTREAM_TIMEOUT_MS);
 
-  try {
-    const upstream = await fetch(GEMINI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: question }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0,
-        },
-      }),
-      signal: abortController.signal,
-    });
+  const result = await requestAnalysisOperation({
+    systemPrompt,
+    question,
+    apiKey,
+    // Left undefined when unset so the client falls back to its own default.
+    model: process.env.GEMINI_MODEL,
+  });
 
-    if (!upstream.ok) {
-      console.error(`[${errorId}] Gemini returned ${upstream.status}: ${await upstream.text()}`);
+  if (result.outcome === 'failed') {
+    // The full diagnostic stays in the server log; the browser only sees the reference id.
+    console.error(`[${errorId}] ${result.detail}`);
 
-      if (upstream.status === 429) {
-        response.status(429).json({
-          error: `The analysis service is busy. Please wait a moment and try again. Reference: ${errorId}`,
-        });
-        return;
-      }
+    const message =
+      result.kind === 'busy'
+        ? 'The analysis service is busy. Please wait a moment and try again.'
+        : result.kind === 'timeout'
+          ? 'The analysis service timed out.'
+          : 'The analysis service is unavailable.';
 
-      response.status(502).json({ error: `The analysis service is unavailable. Reference: ${errorId}` });
-      return;
-    }
-
-    const payload = (await upstream.json()) as GeminiResponse;
-    const candidate = payload.candidates?.[0];
-    const text = candidate?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
-
-    if (!text) {
-      console.error(`[${errorId}] Gemini returned no text. finishReason=${candidate?.finishReason}`);
-      response.status(502).json({ error: `The analysis service is unavailable. Reference: ${errorId}` });
-      return;
-    }
-
-    response.json({ text });
-  } catch (error) {
-    if (abortController.signal.aborted) {
-      console.error(`[${errorId}] Gemini request timed out after ${UPSTREAM_TIMEOUT_MS}ms.`);
-      response.status(504).json({ error: `The analysis service timed out. Reference: ${errorId}` });
-      return;
-    }
-
-    console.error(`[${errorId}] Gemini request failed:`, error);
-    response.status(502).json({ error: `The analysis service is unavailable. Reference: ${errorId}` });
-  } finally {
-    clearTimeout(timeoutId);
+    response.status(result.httpStatus).json({ error: `${message} Reference: ${errorId}` });
+    return;
   }
+
+  response.json({ text: result.text });
 });
 
 app.listen(port, '127.0.0.1', () => {
