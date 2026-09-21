@@ -1,30 +1,81 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;700;900&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Orbitron", "Rajdhani", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Custom styles for Clean Minimalism design theme */
+/* Custom styles for the Cyberpunk design theme */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: #0B0B12;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 10px;
+  background: #2A2A3A;
+  border-radius: 2px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #00E5FF;
 }
 
 .card-shadow {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.05), 0 0 26px rgba(0, 0, 0, 0.8);
+}
+
+/*
+ * Neon glow helpers. Static uses only - where a hover/disabled variant has to
+ * switch a glow off, the markup uses an arbitrary shadow utility instead, so
+ * that Tailwind's variant can win.
+ */
+.glow-cyan {
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.45), 0 0 16px rgba(0, 229, 255, 0.28);
+}
+
+.glow-cyan-lg {
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.7), 0 0 26px rgba(0, 229, 255, 0.42), inset 0 0 18px rgba(0, 229, 255, 0.08);
+}
+
+.glow-magenta {
+  box-shadow: 0 0 0 1px rgba(255, 43, 214, 0.45), 0 0 18px rgba(255, 43, 214, 0.3);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.75), 0 0 22px rgba(0, 229, 255, 0.35);
+}
+
+.text-glow-magenta {
+  text-shadow: 0 0 8px rgba(255, 43, 214, 0.75), 0 0 24px rgba(255, 43, 214, 0.4);
+}
+
+/*
+ * Plain CSS rather than a Tailwind utility: the markup already uses the
+ * `animate-fadeIn` class in several places and this guarantees it resolves.
+ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn {
+    animation: none;
+  }
 }
